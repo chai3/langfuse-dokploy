@@ -52,6 +52,7 @@ services:
       - "3000:3001"
     environment:
       <<: *langfuse-worker-env
+      PORT: 3001
       NEXTAUTH_URL: http://localhost:3001
       NEXTAUTH_SECRET: mysecret
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
