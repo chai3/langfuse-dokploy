@@ -49,7 +49,7 @@ services:
     restart: always
     depends_on: *langfuse-depends-on
     ports:
-      - "3001:3001"
+      - "3000:3001"
     environment:
       <<: *langfuse-worker-env
       NEXTAUTH_URL: http://localhost:3001
