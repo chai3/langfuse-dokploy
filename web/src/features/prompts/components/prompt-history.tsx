@@ -4,7 +4,7 @@ import { SetPromptVersionLabels } from "@/src/features/prompts/components/SetPro
 import { PRODUCTION_LABEL } from "@/src/features/prompts/constants";
 import { type RouterOutputs } from "@/src/utils/api";
 import { type NextRouter, useRouter } from "next/router";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { PromptVersionDiffDialog } from "./PromptVersionDiffDialog";
 
 const PromptHistoryTraceNode = (props: {
@@ -21,6 +21,26 @@ const PromptHistoryTraceNode = (props: {
   const [isLabelPopoverOpen, setIsLabelPopoverOpen] = useState(false);
   const [isPromptDiffOpen, setIsPromptDiffOpen] = useState(false);
   const { prompt } = props;
+
+  // Add ref for scroll into view
+  const currentPromptRef = useRef<HTMLDivElement>(null);
+
+  // Add useEffect for scroll into view behavior
+  useEffect(() => {
+    if (
+      props.currentPromptVersion &&
+      currentPromptRef.current &&
+      props.currentPromptVersion === prompt.version
+    ) {
+      currentPromptRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+    // Should only trigger a single time on initial render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPromptRef.current]);
+
   let badges: JSX.Element[] = prompt.labels
     .sort((a, b) =>
       a === PRODUCTION_LABEL
@@ -41,6 +61,7 @@ const PromptHistoryTraceNode = (props: {
 
   return (
     <div
+      ref={currentPromptRef}
       className={`group mb-2 flex w-full cursor-pointer flex-col gap-1 rounded-sm p-2 hover:bg-primary-foreground ${
         props.currentPromptVersion === prompt.version ? "bg-muted" : ""
       }`}
@@ -61,12 +82,22 @@ const PromptHistoryTraceNode = (props: {
         {badges}
       </div>
       <div className="grid w-full grid-cols-1 items-start justify-between gap-1 md:grid-cols-[1fr,auto]">
-        <div>
+        <div className="min-w-0">
           <div className="flex gap-2">
             <span className="text-xs text-muted-foreground">
               {prompt.createdAt.toLocaleString()}
             </span>
           </div>
+          {prompt.commitMessage && (
+            <div className="flex flex-1 flex-nowrap gap-2">
+              <span
+                className="min-w-0 max-w-full truncate text-xs text-muted-foreground"
+                title={prompt.commitMessage}
+              >
+                {prompt.commitMessage}
+              </span>
+            </div>
+          )}
           <div className="flex gap-2">
             <span className="text-xs text-muted-foreground">
               by {prompt.creator || prompt.createdBy}

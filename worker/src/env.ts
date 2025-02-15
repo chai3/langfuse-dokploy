@@ -39,11 +39,12 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("false"),
 
-  BATCH_EXPORT_ROW_LIMIT: z.coerce.number().positive().default(50_000),
+  BATCH_EXPORT_ROW_LIMIT: z.coerce.number().positive().default(1_000_000),
   BATCH_EXPORT_DOWNLOAD_LINK_EXPIRATION_HOURS: z.coerce
     .number()
     .positive()
     .default(24),
+  BATCH_ACTION_EXPORT_ROW_LIMIT: z.coerce.number().positive().default(50_000),
   EMAIL_FROM_ADDRESS: z.string().optional(),
   SMTP_CONNECTION_URL: z.string().optional(),
   LANGFUSE_INGESTION_QUEUE_PROCESSING_CONCURRENCY: z.coerce
@@ -122,6 +123,10 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("true"),
 
+  LANGFUSE_ENABLE_REDIS_SEEN_EVENT_CACHE: z
+    .enum(["true", "false"])
+    .default("false"),
+
   // Flags to toggle queue consumers on or off.
   QUEUE_CONSUMER_CLOUD_USAGE_METERING_QUEUE_IS_ENABLED: z
     .enum(["true", "false"])
@@ -130,6 +135,9 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("true"),
   QUEUE_CONSUMER_BATCH_EXPORT_QUEUE_IS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true"),
+  QUEUE_CONSUMER_BATCH_ACTION_QUEUE_IS_ENABLED: z
     .enum(["true", "false"])
     .default("true"),
   QUEUE_CONSUMER_EVAL_EXECUTION_QUEUE_IS_ENABLED: z

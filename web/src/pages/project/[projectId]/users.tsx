@@ -8,8 +8,6 @@ import {
   withDefault,
 } from "use-query-params";
 import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
-import { FullScreenPage } from "@/src/components/layouts/full-screen-page";
-import Header from "@/src/components/layouts/header";
 import { DataTable } from "@/src/components/table/data-table";
 import TableLink from "@/src/components/table/table-link";
 import { type LangfuseColumnDef } from "@/src/components/table/types";
@@ -24,6 +22,7 @@ import { usersTableCols } from "@/src/server/api/definitions/usersTable";
 import { joinTableCoreAndMetrics } from "@/src/components/table/utils/joinTableCoreAndMetrics";
 import { useTableDateRange } from "@/src/hooks/useTableDateRange";
 import { useDebounce } from "@/src/hooks/useDebounce";
+import Page from "@/src/components/layouts/page";
 
 type RowData = {
   userId: string;
@@ -134,6 +133,11 @@ export default function UsersPage() {
       accessorKey: "userId",
       enableColumnFilter: true,
       header: "User ID",
+      headerTooltip: {
+        description:
+          "The unique identifier for the user that was logged in Langfuse. See docs for more details on how to set this up.",
+        href: "https://langfuse.com/docs/tracing-features/users",
+      },
       size: 150,
       cell: ({ row }) => {
         const value: RowData["userId"] = row.getValue("userId");
@@ -150,6 +154,9 @@ export default function UsersPage() {
     {
       accessorKey: "firstEvent",
       header: "First Event",
+      headerTooltip: {
+        description: "The earliest trace recorded for this user.",
+      },
       size: 150,
       cell: ({ row }) => {
         const value: RowData["firstEvent"] = row.getValue("firstEvent");
@@ -164,6 +171,9 @@ export default function UsersPage() {
     {
       accessorKey: "lastEvent",
       header: "Last Event",
+      headerTooltip: {
+        description: "The latest trace recorded for this user.",
+      },
       size: 150,
       cell: ({ row }) => {
         const value: RowData["lastEvent"] = row.getValue("lastEvent");
@@ -178,6 +188,11 @@ export default function UsersPage() {
     {
       accessorKey: "totalEvents",
       header: "Total Events",
+      headerTooltip: {
+        description:
+          "Total number of events for the user, includes traces and observations. See data model for more details.",
+        href: "https://langfuse.com/docs/tracing-data-model",
+      },
       size: 120,
       cell: ({ row }) => {
         const value: RowData["totalEvents"] = row.getValue("totalEvents");
@@ -192,6 +207,11 @@ export default function UsersPage() {
     {
       accessorKey: "totalTokens",
       header: "Total Tokens",
+      headerTooltip: {
+        description:
+          "Total number of tokens used for the user across all generations.",
+        href: "https://langfuse.com/docs/model-usage-and-cost",
+      },
       size: 120,
       cell: ({ row }) => {
         const value: RowData["totalTokens"] = row.getValue("totalTokens");
@@ -206,6 +226,10 @@ export default function UsersPage() {
     {
       accessorKey: "totalCost",
       header: "Total Cost",
+      headerTooltip: {
+        description: "Total cost for the user across all generations.",
+        href: "https://langfuse.com/docs/model-usage-and-cost",
+      },
       size: 120,
       cell: ({ row }) => {
         const value: RowData["totalCost"] = row.getValue("totalCost");
@@ -220,15 +244,16 @@ export default function UsersPage() {
   ];
 
   return (
-    <FullScreenPage>
-      <Header
-        title="Users"
-        help={{
+    <Page
+      headerProps={{
+        title: "Users",
+        help: {
           description:
             "Attribute data in Langfuse to a user by adding a userId to your traces. See docs to learn more.",
           href: "https://langfuse.com/docs/user-explorer",
-        }}
-      />
+        },
+      }}
+    >
       <DataTableToolbar
         filterColumnDefinition={usersTableCols}
         filterState={userFilterState}
@@ -283,6 +308,6 @@ export default function UsersPage() {
           state: paginationState,
         }}
       />
-    </FullScreenPage>
+    </Page>
   );
 }

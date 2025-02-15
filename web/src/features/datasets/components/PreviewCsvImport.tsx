@@ -23,8 +23,40 @@ import { MAX_FILE_SIZE_BYTES } from "@/src/features/datasets/components/UploadDa
 import { Progress } from "@/src/components/ui/progress";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 
-const CHUNK_SIZE = 200;
+const MIN_CHUNK_SIZE = 1;
+const CHUNK_START_SIZE = 50;
 const DELAY_BETWEEN_CHUNKS = 100; // milliseconds
+
+// Max payload size is 1MB, but we must account for any trpc wrapper data and context
+const MAX_PAYLOAD_SIZE = 500 * 1024; // 500KB in bytes
+
+function getOptimalChunkSize(items: any[], startSize: number): number {
+  const getPayloadSize = (size: number) =>
+    new TextEncoder().encode(
+      JSON.stringify({
+        projectId: "test",
+        datasetId: "test",
+        items: items.slice(0, size),
+      }),
+    ).length;
+
+  // Binary search for largest chunk size under MAX_PAYLOAD_SIZE
+  let low = MIN_CHUNK_SIZE;
+  let high = startSize;
+  let best = MIN_CHUNK_SIZE;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (getPayloadSize(mid) <= MAX_PAYLOAD_SIZE) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return best;
+}
 
 const CardIdSchema = z.enum(["input", "expected", "metadata", "unmapped"]);
 type CardId = z.infer<typeof CardIdSchema>;
@@ -117,29 +149,33 @@ export function PreviewCsvImport({
         selectedExpectedColumn.size === 0 &&
         selectedMetadataColumn.size === 0
       ) {
-        const defaultInput = new Set([
-          findDefaultColumn(preview.columns, "Input", 0),
-        ]);
-        const defaultExpected = new Set([
-          findDefaultColumn(preview.columns, "Expected", 1),
-        ]);
-        const defaultMetadata = new Set([
-          findDefaultColumn(preview.columns, "Metadata", 2),
-        ]);
+        const defaultInput = findDefaultColumn(preview.columns, "Input", 0);
+        const defaultExpected = findDefaultColumn(
+          preview.columns,
+          "Expected",
+          1,
+        );
+        const defaultMetadata = findDefaultColumn(
+          preview.columns,
+          "Metadata",
+          2,
+        );
 
         // Set default columns based on names
-        setSelectedInputColumn(defaultInput);
-        setSelectedExpectedColumn(defaultExpected);
-        setSelectedMetadataColumn(defaultMetadata);
+        defaultInput && setSelectedInputColumn(new Set([defaultInput]));
+        defaultExpected &&
+          setSelectedExpectedColumn(new Set([defaultExpected]));
+        defaultMetadata &&
+          setSelectedMetadataColumn(new Set([defaultMetadata]));
 
         // Update excluded columns based on current selections
         const newExcluded = new Set(
           preview.columns
             .filter(
               (col) =>
-                !defaultInput.has(col.name) &&
-                !defaultExpected.has(col.name) &&
-                !defaultMetadata.has(col.name),
+                defaultInput !== col.name &&
+                defaultExpected !== col.name &&
+                defaultMetadata !== col.name,
             )
             .map((col) => col.name),
         );
@@ -190,7 +226,7 @@ export function PreviewCsvImport({
     capture("dataset_item:upload_csv_form_submit");
     if (!csvFile) return;
     if (csvFile.size > MAX_FILE_SIZE_BYTES) {
-      showErrorToast("File too large", "Maximum file size is 1MB");
+      showErrorToast("File too large", "Maximum file size is 10MB");
       return;
     }
 
@@ -241,7 +277,8 @@ export function PreviewCsvImport({
         },
       });
 
-      const chunks = chunkArray(items, CHUNK_SIZE);
+      const optimalChunkSize = getOptimalChunkSize(items, CHUNK_START_SIZE);
+      const chunks = chunkArray(items, optimalChunkSize);
 
       for (const [index, chunk] of chunks.entries()) {
         await mutCreateManyDatasetItems.mutateAsync({
@@ -408,7 +445,11 @@ export function PreviewCsvImport({
             Cancel
           </Button>
           <Button
-            disabled={selectedInputColumn.size === 0}
+            disabled={
+              selectedInputColumn.size === 0 &&
+              selectedExpectedColumn.size === 0 &&
+              selectedMetadataColumn.size === 0
+            }
             onClick={handleImport}
           >
             Import

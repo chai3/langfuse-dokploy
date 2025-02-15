@@ -8,14 +8,14 @@ import {
 } from "@/src/features/prompts/server/utils/validation";
 import { withMiddlewares } from "@/src/features/public-api/server/withMiddlewares";
 import { prisma } from "@langfuse/shared/src/db";
-import { redis } from "@langfuse/shared/src/server";
 import { authorizePromptRequestOrThrow } from "../utils/authorizePromptRequest";
 import { RateLimitService } from "@/src/features/public-api/server/RateLimitService";
+import { InvalidRequestError } from "@langfuse/shared";
 
 const getPromptsHandler = async (req: NextApiRequest, res: NextApiResponse) => {
   const authCheck = await authorizePromptRequestOrThrow(req);
 
-  const rateLimitCheck = await new RateLimitService(redis).rateLimitRequest(
+  const rateLimitCheck = await RateLimitService.getInstance().rateLimitRequest(
     authCheck.scope,
     "prompts",
   );
@@ -39,7 +39,7 @@ const postPromptsHandler = async (
 ) => {
   const authCheck = await authorizePromptRequestOrThrow(req);
 
-  const rateLimitCheck = await new RateLimitService(redis).rateLimitRequest(
+  const rateLimitCheck = await RateLimitService.getInstance().rateLimitRequest(
     authCheck.scope,
     "prompts",
   );
@@ -55,6 +55,18 @@ const postPromptsHandler = async (
     projectId: authCheck.scope.projectId,
     createdBy: "API",
     prisma: prisma,
+  }).catch((err) => {
+    if (
+      typeof err === "object" &&
+      err.constructor.name === "PrismaClientKnownRequestError" &&
+      err.code === "P2002" // Unique constraint failed: https://www.prisma.io/docs/orm/reference/error-reference#p2002
+    ) {
+      throw new InvalidRequestError(
+        `Failed to create prompt '${input.name}' due to unique constraint failure. This is likely due to too many concurrent prompt creations for this prompt name. Please add a delay.`,
+      );
+    }
+
+    throw err;
   });
 
   return res.status(201).json(createdPrompt);

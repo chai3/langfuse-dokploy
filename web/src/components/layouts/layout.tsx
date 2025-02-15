@@ -15,6 +15,7 @@ import { useUiCustomization } from "@/src/ee/features/ui-customization/useUiCust
 import { hasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
 import { SidebarInset, SidebarProvider } from "@/src/components/ui/sidebar";
 import { AppSidebar } from "@/src/components/nav/app-sidebar";
+import { CommandMenu } from "@/src/features/command-k-menu/CommandMenu";
 
 const signOutUser = async () => {
   localStorage.clear();
@@ -68,7 +69,17 @@ function useSessionWithRetryOnUnauthenticated() {
   useEffect(() => {
     if (session.status === "unauthenticated" && retryCount < MAX_RETRIES) {
       const fetchSession = async () => {
-        await getSession({ broadcast: true });
+        try {
+          await getSession({ broadcast: true });
+        } catch (error) {
+          console.error(
+            "Error fetching session:",
+            error,
+            "\nError details:",
+            JSON.stringify(error, null, 2),
+          );
+          throw error;
+        }
         setRetryCount((prevCount) => prevCount + 1);
       };
       fetchSession();
@@ -302,8 +313,9 @@ export default function Layout(props: PropsWithChildren) {
             }}
           />
           <SidebarInset className="h-dvh max-w-full md:peer-data-[state=collapsed]:w-[calc(100vw-var(--sidebar-width-icon))] md:peer-data-[state=expanded]:w-[calc(100vw-var(--sidebar-width))]">
-            <main className="h-full p-3">{props.children}</main>
+            <main className="h-full">{props.children}</main>
             <Toaster visibleToasts={1} />
+            <CommandMenu mainNavigation={navigation} />
           </SidebarInset>
         </SidebarProvider>
       </div>
@@ -315,7 +327,7 @@ export type NavigationItem = NestedNavigationItem & {
   items?: NestedNavigationItem[];
 };
 
-type NestedNavigationItem = Omit<Route, "children"> & {
+type NestedNavigationItem = Omit<Route, "children" | "items"> & {
   url: string;
   isActive: boolean;
 };

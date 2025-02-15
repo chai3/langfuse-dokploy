@@ -36,10 +36,15 @@ export const getAllModels = (
   return allModels.data ? extractAllModels(allModels.data) : [];
 };
 
-const extractAllModels = (data: DatabaseRow[]): string[] => {
+const extractAllModels = (
+  data: DatabaseRow[],
+): { model: string; count: number }[] => {
   return data
     .filter((item) => item.model !== null)
-    .map((item) => item.model as string);
+    .map((item) => ({
+      model: item.model as string,
+      count: item.count as number,
+    }));
 };
 
 type ChartData = {
@@ -136,7 +141,6 @@ export function fillMissingValuesAndTransform(
       values: chartDataArray,
     });
   });
-
   return result;
 }
 

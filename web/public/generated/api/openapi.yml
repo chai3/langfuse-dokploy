@@ -715,9 +715,29 @@ paths:
   /api/public/ingestion:
     post:
       description: >-
-        Batched ingestion for Langfuse Tracing. If you want to use tracing via
-        the API, such as to build your own Langfuse client implementation, this
-        is the only API route you need to implement.
+        Batched ingestion for Langfuse Tracing.
+
+        If you want to use tracing via the API, such as to build your own
+        Langfuse client implementation, this is the only API route you need to
+        implement.
+
+
+        Within each batch, there can be multiple events.
+
+        Each event has a type, an id, a timestamp, metadata and a body.
+
+        Internally, we refer to this as the "event envelope" as it tells us
+        something about the event but not the trace.
+
+        We use the event id within this envelope to deduplicate messages to
+        avoid processing the same event twice, i.e. the event id should be
+        unique per request.
+
+        The event.body.id is the ID of the actual trace and will be used for
+        updates and will be visible within the Langfuse App.
+
+        I.e. if you want to update a trace, you'd use the same body id, but
+        separate event IDs.
 
 
         Notes:
@@ -737,12 +757,31 @@ paths:
         - Ingestion
       parameters: []
       responses:
-        '200':
+        '207':
           description: ''
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/IngestionResponse'
+              examples:
+                Example1:
+                  value:
+                    successes:
+                      - id: abcdef-1234-5678-90ab
+                        status: 201
+                    errors: []
+                Example2:
+                  value:
+                    successes:
+                      - id: abcdef-1234-5678-90ab
+                        status: 201
+                    errors: []
+                Example3:
+                  value:
+                    successes:
+                      - id: abcdef-1234-5678-90ab
+                        status: 201
+                    errors: []
         '400':
           description: ''
           content:
@@ -791,6 +830,49 @@ paths:
                     debugging.
               required:
                 - batch
+            examples:
+              Example1:
+                value:
+                  batch:
+                    - id: abcdef-1234-5678-90ab
+                      timestamp: '2022-01-01T00:00:00.000Z'
+                      type: trace-create
+                      body:
+                        id: abcdef-1234-5678-90ab
+                        timestamp: '2022-01-01T00:00:00.000Z'
+                        name: My Trace
+                        userId: 1234-5678-90ab-cdef
+                        input: My input
+                        output: My output
+                        sessionId: 1234-5678-90ab-cdef
+                        release: 1.0.0
+                        version: 1.0.0
+                        metadata: My metadata
+                        tags:
+                          - tag1
+                          - tag2
+                        public: true
+              Example2:
+                value:
+                  batch:
+                    - id: abcdef-1234-5678-90ab
+                      timestamp: '2022-01-01T00:00:00.000Z'
+                      type: span-create
+                      body:
+                        id: abcdef-1234-5678-90ab
+                        traceId: 1234-5678-90ab-cdef
+                        startTime: '2022-01-01T00:00:00.000Z'
+              Example3:
+                value:
+                  batch:
+                    - id: abcdef-1234-5678-90ab
+                      timestamp: '2022-01-01T00:00:00.000Z'
+                      type: score-create
+                      body:
+                        id: abcdef-1234-5678-90ab
+                        traceId: 1234-5678-90ab-cdef
+                        name: My Score
+                        value: 0.9
   /api/public/media/{mediaId}:
     get:
       description: Get a media record
@@ -1426,14 +1508,14 @@ paths:
               schema: {}
       security:
         - BasicAuth: []
-  /api/public/v2/prompts/{promptName}/version/{version}:
+  /api/public/v2/prompts/{name}/versions/{version}:
     patch:
       description: Update labels for a specific prompt version
       operationId: promptVersion_update
       tags:
         - PromptVersion
       parameters:
-        - name: promptName
+        - name: name
           in: path
           description: The name of the prompt
           required: true
@@ -4523,6 +4605,10 @@ components:
             type: string
           nullable: true
           description: List of tags to apply to all versions of this prompt.
+        commitMessage:
+          type: string
+          nullable: true
+          description: Commit message for this prompt version.
       required:
         - name
         - prompt
@@ -4548,6 +4634,10 @@ components:
             type: string
           nullable: true
           description: List of tags to apply to all versions of this prompt.
+        commitMessage:
+          type: string
+          nullable: true
+          description: Commit message for this prompt version.
       required:
         - name
         - prompt
@@ -4597,6 +4687,10 @@ components:
           description: >-
             List of tags. Used to filter via UI and API. The same across
             versions of a prompt.
+        commitMessage:
+          type: string
+          nullable: true
+          description: Commit message for this prompt version.
       required:
         - name
         - version

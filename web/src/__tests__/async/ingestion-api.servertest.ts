@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { makeAPICall } from "@/src/__tests__/test-utils";
 import waitForExpect from "wait-for-expect";
 import {
+  getEventLogByProjectAndEntityId,
   getObservationById,
   getScoreById,
   getTraceById,
@@ -215,6 +216,43 @@ describe("/api/public/ingestion API Endpoint", () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(response.body.errors.length).toBe(1);
     expect(response.body.errors[0].message).toBe("Invalid request data");
+  });
+
+  // Disabled until eventLog becomes the default behaviour.
+  it("should create a log entry for the S3 file", async () => {
+    const traceId = v4();
+    const eventId = v4();
+
+    const response = await makeAPICall("POST", "/api/public/ingestion", {
+      batch: [
+        {
+          id: eventId,
+          type: "trace-create",
+          timestamp: new Date().toISOString(),
+          body: {
+            id: traceId,
+            name: "Foo Bar",
+            userId: "user-1",
+            metadata: { key: "value" },
+            release: "1.0.0",
+            version: "2.0.0",
+          },
+        },
+      ],
+    });
+    expect(response.status).toBe(207);
+
+    await waitForExpect(async () => {
+      const logs = await getEventLogByProjectAndEntityId(
+        projectId,
+        "trace",
+        traceId,
+      );
+      expect(logs.length).toBeGreaterThan(0);
+      expect(logs[0].bucket_path).toBe(
+        `events/${projectId}/trace/${traceId}/${eventId}.json`,
+      );
+    });
   });
 
   it("#4900: should clear score comment on update with `null`", async () => {

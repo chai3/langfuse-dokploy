@@ -25,8 +25,31 @@ export const generateObservationsForPublicApi = async (props: QueryType) => {
   const appliedFilter = chFilter.apply();
   const traceFilter = chFilter.find((f) => f.clickhouseTable === "traces");
 
+  // This _must_ be updated if we add a new skip index column to the observations table.
+  // Otherwise, we will ignore it in most cases due to `FINAL`.
+  const shouldUseSkipIndexes = chFilter.some(
+    (f) =>
+      f.clickhouseTable === "observations" &&
+      ["trace_id"].some((skipIndexCol) => f.field.includes(skipIndexCol)),
+  );
+
   const query = `
-        SELECT
+    with clickhouse_keys as (
+      SELECT
+        id,
+        trace_id,
+        project_id,
+        type,
+        start_time,
+      FROM observations o ${shouldUseSkipIndexes ? "" : "FINAL"}
+      ${traceFilter ? `LEFT JOIN traces t ON o.trace_id = t.id AND t.project_id = o.project_id` : ""}
+      WHERE o.project_id = {projectId: String}
+      ${traceFilter ? `AND t.project_id = {projectId: String}` : ""}
+      AND ${appliedFilter.query}
+      ${shouldUseSkipIndexes ? "ORDER BY start_time desc, event_ts desc LIMIT 1 by id, project_id" : "ORDER BY start_time DESC"}
+      ${props.limit !== undefined && props.page !== undefined ? `LIMIT {limit: Int32} OFFSET {offset: Int32}` : ""}
+    )
+      SELECT 
         id,
         trace_id,
         project_id,
@@ -56,14 +79,12 @@ export const generateObservationsForPublicApi = async (props: QueryType) => {
         created_at,
         updated_at,
         event_ts
-      FROM observations o
-      ${traceFilter ? `LEFT JOIN traces t ON o.trace_id = t.id AND t.project_id = o.project_id` : ""}
+      FROM observations o ${shouldUseSkipIndexes ? "" : "FINAL"}
+      
       WHERE o.project_id = {projectId: String}
-      ${traceFilter ? `AND t.project_id = {projectId: String}` : ""}
-      AND ${appliedFilter.query}
-      ORDER BY event_ts desc
-      LIMIT 1 by id, project_id
-      ${props.limit !== undefined && props.page !== undefined ? `LIMIT {limit: Int32} OFFSET {offset: Int32}` : ""}
+      AND (id, trace_id, project_id, type, start_time) in (select * from clickhouse_keys)
+
+      ${shouldUseSkipIndexes ? "ORDER BY start_time desc, event_ts desc LIMIT 1 by id, project_id" : "ORDER BY start_time DESC"}
       `;
 
   const result = await queryClickhouse<ObservationRecordReadType>({

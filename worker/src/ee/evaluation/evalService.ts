@@ -8,8 +8,6 @@ import {
   EvalExecutionEvent,
   tableColumnsToSqlFilterAndPrefix,
   traceException,
-  StorageServiceFactory,
-  StorageService,
   eventTypes,
   redis,
   IngestionQueue,
@@ -21,6 +19,8 @@ import {
   getObservationForTraceIdByName,
   DatasetRunItemUpsertEventType,
   TraceQueueEventType,
+  StorageService,
+  StorageServiceFactory,
 } from "@langfuse/shared/src/server";
 import {
   availableTraceEvalVariables,
@@ -35,14 +35,16 @@ import {
   ZodModelConfig,
   evalDatasetFormFilterCols,
   availableDatasetEvalVariables,
+  variableMapping,
 } from "@langfuse/shared";
 import { kyselyPrisma, prisma } from "@langfuse/shared/src/db";
 import { backOff } from "exponential-backoff";
-import { env } from "../../env";
 import {
   callStructuredLLM,
   compileHandlebarString,
 } from "../../features/utilities";
+import { JSONPath } from "jsonpath-plus";
+import { env } from "../../env";
 
 let s3StorageServiceClient: StorageService;
 
@@ -102,22 +104,20 @@ export const createEvalJobs = async ({
     );
 
     const isDatasetConfig = config.target_object === "dataset";
-    let datasetItem:
-      | { id: string; sourceObservationId: string | undefined }
-      | undefined;
+    let datasetItem: { id: string } | undefined;
     if (isDatasetConfig) {
+      const condition = tableColumnsToSqlFilterAndPrefix(
+        config.target_object === "dataset" ? validatedFilter : [],
+        evalDatasetFormFilterCols,
+        "dataset_items",
+      );
+
       // If the target object is a dataset and the event type has a datasetItemId, we try to fetch it based on our filter
       if ("datasetItemId" in event && event.datasetItemId) {
-        const condition = tableColumnsToSqlFilterAndPrefix(
-          config.target_object === "dataset" ? validatedFilter : [],
-          evalDatasetFormFilterCols,
-          "dataset_items",
-        );
-
         const datasetItems = await prisma.$queryRaw<
-          Array<{ id: string; sourceObservationId: string | undefined }>
+          Array<{ id: string }>
         >(Prisma.sql`
-          SELECT id, source_observation_id as "sourceObservationId"
+          SELECT id
           FROM dataset_items as di
           WHERE project_id = ${event.projectId}
             AND id = ${event.datasetItemId}
@@ -128,13 +128,16 @@ export const createEvalJobs = async ({
         // Otherwise, try to find the dataset item id from datasetRunItems.
         // Here, we can search for the traceId and projectId and should only get one result.
         const datasetItems = await prisma.$queryRaw<
-          Array<{ id: string; sourceObservationId: string | undefined }>
+          Array<{ id: string }>
         >(Prisma.sql`
-          SELECT dataset_item_id as id, observation_id as "sourceObservationId"
+          SELECT dataset_item_id as id
           FROM dataset_run_items as dri
-          WHERE project_id = ${event.projectId}
-          AND trace_id = ${event.traceId}
+          JOIN dataset_items as di ON di.id = dri.dataset_item_id
+          WHERE dri.project_id = ${event.projectId}
+            AND dri.trace_id = ${event.traceId}
+            ${condition}
         `);
+
         datasetItem = datasetItems.shift();
       }
     }
@@ -145,7 +148,7 @@ export const createEvalJobs = async ({
     const observationId =
       "observationId" in event && event.observationId
         ? event.observationId
-        : datasetItem?.sourceObservationId;
+        : undefined;
     if (observationId) {
       const observationExists = await checkObservationExists(
         event.projectId,
@@ -223,7 +226,7 @@ export const createEvalJobs = async ({
           ...(datasetItem
             ? {
                 jobInputDatasetItemId: datasetItem.id,
-                jobInputObservationId: datasetItem.sourceObservationId || null,
+                jobInputObservationId: observationId || null,
               }
             : {}),
         },
@@ -402,13 +405,7 @@ export const evaluate = async ({
     );
   }
 
-  const messages = [
-    {
-      role: ChatMessageRole.System,
-      content: "You are an expert at evaluating LLM outputs.",
-    },
-    { role: ChatMessageRole.User, content: prompt },
-  ];
+  const messages = [{ role: ChatMessageRole.User, content: prompt }];
 
   const parsedLLMOutput = await backOff(
     async () =>
@@ -445,23 +442,21 @@ export const evaluate = async ({
 
   // Write score to S3 and ingest into queue for Clickhouse processing
   try {
-    const s3Client = getS3StorageServiceClient(
+    const eventId = randomUUID();
+    const bucketPath = `${env.LANGFUSE_S3_EVENT_UPLOAD_PREFIX}${event.projectId}/score/${scoreId}/${eventId}.json`;
+    await getS3StorageServiceClient(
       env.LANGFUSE_S3_EVENT_UPLOAD_BUCKET,
-    );
-    await s3Client.uploadJson(
-      `${env.LANGFUSE_S3_EVENT_UPLOAD_PREFIX}${event.projectId}/score/${scoreId}/${randomUUID()}.json`,
-      [
-        {
-          id: randomUUID(),
-          timestamp: new Date().toISOString(),
-          type: eventTypes.SCORE_CREATE,
-          body: {
-            ...baseScore,
-            dataType: "NUMERIC",
-          },
+    ).uploadJson(bucketPath, [
+      {
+        id: eventId,
+        timestamp: new Date().toISOString(),
+        type: eventTypes.SCORE_CREATE,
+        body: {
+          ...baseScore,
+          dataType: "NUMERIC",
         },
-      ],
-    );
+      },
+    ]);
 
     if (redis) {
       const queue = IngestionQueue.getInstance();
@@ -476,6 +471,7 @@ export const evaluate = async ({
           data: {
             type: eventTypes.SCORE_CREATE,
             eventBodyId: scoreId,
+            fileKey: eventId,
           },
           authCheck: {
             validKey: true,
@@ -579,7 +575,7 @@ export async function extractVariablesFromTracingData({
 
         return {
           var: variable,
-          value: parseUnknownToString(datasetItem[mapping.selectedColumnId]),
+          value: parseDatabaseRowToString(datasetItem, mapping),
         };
       }
 
@@ -614,7 +610,7 @@ export async function extractVariablesFromTracingData({
 
         return {
           var: variable,
-          value: parseUnknownToString(trace[mapping.selectedColumnId]),
+          value: parseDatabaseRowToString(trace, mapping),
         };
       }
 
@@ -667,6 +663,39 @@ export async function extractVariablesFromTracingData({
     }),
   );
 }
+
+export const parseDatabaseRowToString = (
+  dbRow: Record<string, unknown>,
+  mapping: z.infer<typeof variableMapping>,
+): string => {
+  const selectedColumn = dbRow[mapping.selectedColumnId];
+
+  let jsonSelectedColumn;
+  if (mapping.jsonSelector) {
+    logger.debug(
+      `Parsing JSON for json selector ${mapping.jsonSelector} from ${JSON.stringify(selectedColumn)}`,
+    );
+    try {
+      jsonSelectedColumn = JSONPath({
+        path: mapping.jsonSelector,
+        json:
+          typeof selectedColumn === "string"
+            ? JSON.parse(selectedColumn)
+            : selectedColumn,
+      });
+    } catch (error) {
+      logger.error(
+        `Error parsing JSON for json selector ${mapping.jsonSelector}. Falling back to original value.`,
+        error,
+      );
+      jsonSelectedColumn = selectedColumn;
+    }
+  } else {
+    jsonSelectedColumn = selectedColumn;
+  }
+
+  return parseUnknownToString(jsonSelectedColumn);
+};
 
 export const parseUnknownToString = (value: unknown): string => {
   if (value === null || value === undefined) {
