@@ -13,6 +13,7 @@ export type PageHeaderProps = {
   help?: { description: string; href?: string; className?: string };
   itemType?: LangfuseItemType;
   container?: boolean;
+  tabsComponent?: React.ReactNode;
 };
 
 const PageHeader = ({
@@ -22,6 +23,7 @@ const PageHeader = ({
   actionButtonsRight,
   breadcrumb,
   help,
+  tabsComponent,
   container = false,
 }: PageHeaderProps) => {
   return (
@@ -44,33 +46,47 @@ const PageHeader = ({
         </div>
 
         {/* Bottom Row */}
-        <div className="bg-muted">
+        <div className="bg-header">
           <div
             className={cn(
-              "flex min-h-12 items-center justify-between p-3",
+              "grid min-h-12 min-w-0 max-w-full grid-cols-[minmax(0,auto)_minmax(auto,1fr)] items-center justify-between gap-1 px-3 py-1",
               container && "lg:container",
             )}
           >
-            <div className="flex-no-wrap flex min-h-12 items-center gap-1">
-              {itemType && <ItemBadge type={itemType} showLabel />}
-              <h2 className="line-clamp-2 h-14 min-w-0 place-content-center text-lg font-semibold leading-7">
-                {title}
-              </h2>
-              {help && (
-                <div className="-ml-1 -mt-2">
-                  <DocPopup
-                    description={help.description}
-                    href={help.href}
-                    className={help.className}
-                  />
+            <div className="flex max-w-fit items-center gap-1 overflow-y-auto md:min-w-28">
+              {itemType && (
+                <div className="flex h-12 items-center">
+                  <ItemBadge type={itemType} showLabel />
                 </div>
               )}
-              <div className="flex items-center gap-1">{actionButtonsLeft}</div>
+              <div className="relative inline-block min-w-10 md:min-w-20">
+                <h2 className="line-clamp-2 inline h-14 min-w-0 place-content-center text-lg font-semibold leading-7">
+                  <span className="line-clamp-2 break-all md:break-words">
+                    {title}
+                    {help && (
+                      <span className="whitespace-nowrap">
+                        &nbsp;
+                        <DocPopup
+                          description={help.description}
+                          href={help.href}
+                          className={help.className}
+                        />
+                      </span>
+                    )}
+                  </span>
+                </h2>
+              </div>
+              {actionButtonsLeft && (
+                <div className="flex w-fit min-w-20 flex-shrink items-center gap-1 overflow-y-auto">
+                  {actionButtonsLeft}
+                </div>
+              )}
             </div>
-            <div className="flex flex-row flex-wrap items-center gap-1">
+            <div className="flex flex-wrap items-center justify-end gap-1">
               {actionButtonsRight}
             </div>
           </div>
+          <div className="ml-2">{tabsComponent}</div>
         </div>
       </div>
     </div>

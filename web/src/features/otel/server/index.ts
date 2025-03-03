@@ -1,6 +1,6 @@
 import { type IngestionEventType } from "@langfuse/shared/src/server";
 import { randomUUID } from "crypto";
-import { ObservationLevel } from "@prisma/client";
+import { ObservationLevel } from "@langfuse/shared";
 
 const convertNanoTimestampToISO = (
   timestamp:
@@ -128,6 +128,27 @@ const extractInputAndOutput = (
       event.name === "gen_ai.content.completion",
   )?.attributes;
   if (input || output) {
+    input =
+      input?.reduce((acc: any, attr: any) => {
+        acc[attr.key] = convertValueToPlainJavascript(attr.value);
+        return acc;
+      }, {}) ?? {};
+    output =
+      output?.reduce((acc: any, attr: any) => {
+        acc[attr.key] = convertValueToPlainJavascript(attr.value);
+        return acc;
+      }, {}) ?? {};
+    // Here, we are interested in the attributes of the event. Usually gen_ai.prompt and gen_ai.completion.
+    // We can use the current function again to extract them from the event attributes.
+    const { input: eventInput } = extractInputAndOutput([], input);
+    const { output: eventOutput } = extractInputAndOutput([], output);
+    return { input: eventInput || input, output: eventOutput || output };
+  }
+
+  // MLFlow sets mlflow.spanInputs and mlflow.spanOutputs
+  input = attributes["mlflow.spanInputs"];
+  output = attributes["mlflow.spanOutputs"];
+  if (input || output) {
     return { input, output };
   }
 
@@ -168,6 +189,26 @@ const extractInputAndOutput = (
   }
 
   return { input: null, output: null };
+};
+
+const extractEnvironment = (
+  attributes: Record<string, unknown>,
+  resourceAttributes: Record<string, unknown>,
+): string => {
+  const environmentAttributeKeys = [
+    "langfuse.environment",
+    "deployment.environment.name",
+    "deployment.environment",
+  ];
+  for (const key of environmentAttributeKeys) {
+    if (resourceAttributes[key]) {
+      return resourceAttributes[key] as string;
+    }
+    if (attributes[key]) {
+      return attributes[key] as string;
+    }
+  }
+  return "default";
 };
 
 const extractUserId = (
@@ -225,6 +266,7 @@ const extractModelName = (
     "gen_ai.request.model",
     "gen_ai.response.model",
     "llm.model_name",
+    "model",
   ];
   for (const key of modelNameKeys) {
     if (attributes[key]) {
@@ -258,7 +300,11 @@ const extractUsageDetails = (
       .replace("llm.token_count.", "");
     const mappedUsageDetailKey =
       usageDetailKeyMapping[usageDetailKey] ?? usageDetailKey;
-    acc[mappedUsageDetailKey] = attributes[key];
+    // Cast the respective key to a number
+    const value = Number(attributes[key]);
+    if (!Number.isNaN(value)) {
+      acc[mappedUsageDetailKey] = value;
+    }
     return acc;
   }, {});
 };
@@ -297,7 +343,13 @@ export const convertOtelSpanToIngestionEvent = (
           return acc;
         }, {}) ?? {};
 
-      if (!span?.parentSpanId) {
+      const parentObservationId = span?.parentSpanId
+        ? Buffer.from(span.parentSpanId?.data ?? span.parentSpanId).toString(
+            "hex",
+          )
+        : null;
+
+      if (!parentObservationId) {
         // Create a trace for any root span
         const trace = {
           id: Buffer.from(span.traceId?.data ?? span.traceId).toString("hex"),
@@ -308,9 +360,19 @@ export const convertOtelSpanToIngestionEvent = (
             resourceAttributes,
             scope: scopeSpan?.scope,
           },
-          version: resourceAttributes?.["service.version"] ?? null,
+          version:
+            attributes?.["langfuse.version"] ??
+            resourceAttributes?.["service.version"] ??
+            null,
+          release: attributes?.["langfuse.release"] ?? null,
           userId: extractUserId(attributes),
           sessionId: extractSessionId(attributes),
+          public:
+            attributes?.["langfuse.public"] === true ||
+            attributes?.["langfuse.public"] === "true",
+          tags: attributes?.["langfuse.tags"] ?? [],
+
+          environment: extractEnvironment(attributes, resourceAttributes),
 
           // Input and Output
           ...extractInputAndOutput(span?.events ?? [], attributes),
@@ -329,14 +391,12 @@ export const convertOtelSpanToIngestionEvent = (
         traceId: Buffer.from(span.traceId?.data ?? span.traceId).toString(
           "hex",
         ),
-        parentObservationId: span?.parentSpanId
-          ? Buffer.from(span.parentSpanId?.data ?? span.parentSpanId).toString(
-              "hex",
-            )
-          : null,
+        parentObservationId,
         name: span.name,
         startTime: convertNanoTimestampToISO(span.startTimeUnixNano),
         endTime: convertNanoTimestampToISO(span.endTimeUnixNano),
+
+        environment: extractEnvironment(attributes, resourceAttributes),
 
         // Additional fields
         metadata: {
@@ -348,8 +408,16 @@ export const convertOtelSpanToIngestionEvent = (
           span.status?.code === 2
             ? ObservationLevel.ERROR
             : ObservationLevel.DEFAULT,
+        statusMessage: span.status?.message ?? null,
+        version:
+          attributes?.["langfuse.version"] ??
+          resourceAttributes?.["service.version"] ??
+          null,
         modelParameters: extractModelParameters(attributes) as any,
         model: extractModelName(attributes),
+
+        promptName: attributes?.["langfuse.prompt.name"] ?? null,
+        promptVersion: attributes?.["langfuse.prompt.version"] ?? null,
 
         usageDetails: extractUsageDetails(attributes) as any,
         costDetails: extractCostDetails(attributes) as any,

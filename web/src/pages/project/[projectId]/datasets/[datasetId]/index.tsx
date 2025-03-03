@@ -1,15 +1,24 @@
 import { DatasetRunsTable } from "@/src/features/datasets/components/DatasetRunsTable";
 import { api } from "@/src/utils/api";
 import { useRouter } from "next/router";
-import { Tabs, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import Link from "next/link";
 import { DetailPageNav } from "@/src/features/navigate-detail-pages/DetailPageNav";
 import { DatasetActionButton } from "@/src/features/datasets/components/DatasetActionButton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/src/components/ui/dropdown-menu";
 import { DeleteButton } from "@/src/components/deleteButton";
 import { DuplicateDatasetButton } from "@/src/features/datasets/components/DuplicateDatasetButton";
 import { useState } from "react";
 import { MultiSelectKeyValues } from "@/src/features/scores/components/multi-select-key-values";
-import { ExternalLink, FlaskConical, FolderKanban } from "lucide-react";
+import {
+  ExternalLink,
+  FlaskConical,
+  FolderKanban,
+  MoreVertical,
+} from "lucide-react";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { useMemo } from "react";
 import { useHasEntitlement } from "@/src/features/entitlements/hooks";
@@ -24,14 +33,19 @@ import { showSuccessToast } from "@/src/features/notifications/showSuccessToast"
 import { DropdownMenuItem } from "@/src/components/ui/dropdown-menu";
 import { DatasetAnalytics } from "@/src/features/datasets/components/DatasetAnalytics";
 import { RESOURCE_METRICS } from "@/src/features/dashboard/lib/score-analytics-utils";
-import { MarkdownOrJsonView } from "@/src/components/trace/IOPreview";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/src/components/ui/popover";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
+import { MarkdownJsonView } from "@/src/components/ui/MarkdownJsonView";
 import Page from "@/src/components/layouts/page";
+import {
+  TabsBarList,
+  TabsBarTrigger,
+  TabsBar,
+} from "@/src/components/ui/tabs-bar";
 
 export default function Dataset() {
   const router = useRouter();
@@ -118,6 +132,20 @@ export default function Dataset() {
               description: dataset.data.description,
             }
           : undefined,
+        tabsComponent: (
+          <TabsBar value="runs">
+            <TabsBarList className="justify-start">
+              <TabsBarTrigger value="runs">Runs</TabsBarTrigger>
+              <TabsBarTrigger value="items" asChild>
+                <Link
+                  href={`/project/${projectId}/datasets/${datasetId}/items`}
+                >
+                  Items
+                </Link>
+              </TabsBarTrigger>
+            </TabsBarList>
+          </TabsBar>
+        ),
         actionButtonsRight: [
           <>
             <Dialog
@@ -131,7 +159,7 @@ export default function Dataset() {
                   onClick={() => capture("dataset_run:new_form_open")}
                 >
                   <FlaskConical className="h-4 w-4" />
-                  <span className="ml-2">New experiment</span>
+                  <span className="ml-2 hidden md:block">New experiment</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
@@ -188,7 +216,7 @@ export default function Dataset() {
               <PopoverTrigger asChild>
                 <Button variant="outline">
                   <FolderKanban className="mr-2 h-4 w-4" />
-                  Dataset details
+                  <span className="hidden md:block">Dataset details</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="mx-2 max-h-[50vh] w-[50vw] overflow-y-auto md:w-[25vw]">
@@ -201,7 +229,7 @@ export default function Dataset() {
                   </div>
                   <div>
                     <h4 className="mb-1 font-medium">Metadata</h4>
-                    <MarkdownOrJsonView
+                    <MarkdownJsonView
                       content={dataset.data?.metadata ?? null}
                     />
                   </div>
@@ -213,29 +241,43 @@ export default function Dataset() {
               path={(entry) => `/project/${projectId}/datasets/${entry.id}`}
               listKey="datasets"
             />
-            <DatasetActionButton
-              mode="update"
-              projectId={projectId}
-              datasetId={datasetId}
-              datasetName={dataset.data?.name ?? ""}
-              datasetDescription={dataset.data?.description ?? undefined}
-              datasetMetadata={dataset.data?.metadata}
-              icon
-            />
-            <DuplicateDatasetButton
-              datasetId={datasetId}
-              projectId={projectId}
-            />
-            <DeleteButton
-              itemId={datasetId}
-              projectId={projectId}
-              isTableAction={false}
-              scope="datasets:CUD"
-              invalidateFunc={() => void utils.datasets.invalidate()}
-              type="dataset"
-              redirectUrl={`/project/${projectId}/datasets`}
-              deleteConfirmation={dataset.data?.name}
-            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="flex flex-col [&>*]:w-full [&>*]:justify-start">
+                <DropdownMenuItem asChild>
+                  <DatasetActionButton
+                    mode="update"
+                    projectId={projectId}
+                    datasetId={datasetId}
+                    datasetName={dataset.data?.name ?? ""}
+                    datasetDescription={dataset.data?.description ?? undefined}
+                    datasetMetadata={dataset.data?.metadata}
+                  />
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <DuplicateDatasetButton
+                    datasetId={datasetId}
+                    projectId={projectId}
+                  />
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <DeleteButton
+                    itemId={datasetId}
+                    projectId={projectId}
+                    isTableAction={false}
+                    scope="datasets:CUD"
+                    invalidateFunc={() => void utils.datasets.invalidate()}
+                    type="dataset"
+                    redirectUrl={`/project/${projectId}/datasets`}
+                    deleteConfirmation={dataset.data?.name}
+                  />
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>,
         ],
       }}
@@ -245,20 +287,6 @@ export default function Dataset() {
         datasetId={datasetId}
         selectedMetrics={selectedMetrics}
         setScoreOptions={setScoreOptions}
-        menuItems={
-          <Tabs value="runs">
-            <TabsList>
-              <TabsTrigger value="runs">Runs</TabsTrigger>
-              <TabsTrigger value="items" asChild>
-                <Link
-                  href={`/project/${projectId}/datasets/${datasetId}/items`}
-                >
-                  Items
-                </Link>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        }
       />
     </Page>
   );

@@ -59,3 +59,16 @@ export const getPublicSessionsFilter = async (
     ? [...filter.filter((f) => f.column !== "⭐️"), ...additionalBookmarkFilter]
     : [...additionalBookmarkFilter];
 };
+
+export const hasAnySession = async (projectId: string) => {
+  const session = await prisma.traceSession.findFirst({
+    where: {
+      projectId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return session !== null;
+};
