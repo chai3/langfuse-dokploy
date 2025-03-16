@@ -20,7 +20,7 @@ services:
       TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-true}
       CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:19000}
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:18123}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
       CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
@@ -81,10 +81,10 @@ services:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
     ports:
-      - "18123:18123"
-      - "19000:19000"
+      - "8123:18123"
+      - "9000:19000"
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:18123/ping || exit 1
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
       timeout: 5s
       retries: 10
@@ -100,8 +100,8 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
     ports:
-      - "9090:19000"
-      - "9091:19001"
+      - "19090:19000"
+      - "19091:19001"
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
