@@ -100,8 +100,8 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
     ports:
-      - "19090:19000"
-      - "19091:19001"
+      - "19000:19000"
+      - "19001:19001"
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
@@ -137,7 +137,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - 15432:15432
+      - 5432:15432
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data
 
